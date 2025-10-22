@@ -131,8 +131,13 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // === START: API KEY CONFIGURATION ===
+    /* 已將 Gemini API Key 移至 Apps Script 的腳本屬性 (Script Properties) 中，以確保安全。 
+       前端不應再包含此 Key。Apps Script 將作為中介服務器調用 Gemini API。
+    */
+    // === END: API KEY CONFIGURATION ===
+
     // 根據 DOCX 文件內容更新的 PROJECTS 陣列
-    // 已移除 cost_h 和 risk_r 的預設值/顯示
     const PROJECTS = [
         // 範疇一 優化醫療工作條件
         { id: 'D1-O1-1', scope: '範疇一：優化醫療工作條件', name: '建立「員工價值主張」為核心之健康職場，提升專業成就感與組織認同', desc: '建立「員工價值主張」為核心之健康職場，提升專業成就感與組織認同' },
@@ -342,44 +347,17 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
     }
 
-    // --- Gemini API Integration ---
-    const API_KEY = ""; // Using empty string for Canvas environment
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY}`;
-    const MAX_RETRIES = 3;
-    const BASE_DELAY = 1000;
-
-    async function callGeminiApi(payload) {
-        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-            try {
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const result = await response.json();
-                const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "分析失敗，模型未返回內容。";
-                return text;
-
-            } catch (error) {
-                if (attempt < MAX_RETRIES - 1) {
-                    const delay = BASE_DELAY * (2 ** attempt);
-                    // Exponential backoff logic
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                } else {
-                    throw error;
-                }
-            }
-        }
-    }
-
+    // --- AI Analysis Logic (Now calls Apps Script) ---
     async function analyzeWithAI() {
         const projectId = projectSelector.value;
         const project = PROJECTS.find(p => p.id === projectId);
+
+        // Check if GAS_URL is set for submission or analysis
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbxUIZmQfrHPjOjXdw8D1r-HcYG0MO5MlK2wFNnD8P0eZpX0J3_C66MmdYB3ANy8X6ut7g/exec';
+        if (GAS_URL.includes('YOUR_GOOGLE_APPS_SCRIPT')) {
+            aiStatus.textContent = '錯誤：請設定 Google Apps Script URL。';
+            return;
+        }
         
         if (!project) return;
 
@@ -388,32 +366,31 @@ document.addEventListener('DOMContentLoaded', function() {
         aiResultDisplay.classList.add('hidden');
         aiStatus.textContent = '正在呼叫 AI 進行分析...';
 
-        const systemPrompt = `
-            你是一位頂級專案管理師 (PMP)，精通專案評估和排序 (Project Prioritization) 的標準。
-            你的任務是根據提供的計畫內容，從商業策略、執行風險和潛在效益的角度，提供一份簡潔、專業的分析建議。
-            你的回覆必須是繁體中文，且只包含分析建議文本，不需要任何前言或結尾語。
-            分析建議應包含以下結構：
-            1. 策略價值 (Strategic Value): 該計畫如何支持組織的頂層目標？
-            2. 執行風險 (Execution Risk): 該計畫在實施過程中可能遇到哪些主要挑戰？
-            3. 優先級考量 (Priority Consideration): 根據價值和風險，提出初步的優先級建議。
-            請使用項目符號 (Markdown List) 呈現分析結果。
-        `;
-
-        const userQuery = `
-            請分析以下計畫：
-            - 範疇: ${project.scope}
-            - 專案名稱: ${project.name}
-            - 專案描述: ${project.desc}
-        `;
-
-        const payload = {
-            contents: [{ parts: [{ text: userQuery }] }],
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            config: { temperature: 0.2 }
+        const dataPayload = {
+            action: 'analyze',
+            projectScope: project.scope,
+            projectName: project.name,
+            projectDesc: project.desc
         };
 
         try {
-            const analysisText = await callGeminiApi(payload);
+            const response = await fetch(GAS_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dataPayload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP Error: ${response.status}`);
+            }
+            
+            const result = await response.json();
+
+            if (result.analysisText && result.analysisText.startsWith('AI 分析失敗')) {
+                 throw new Error(result.analysisText); // Throw error from Apps Script
+            }
+            
+            const analysisText = result.analysisText || "分析失敗，未收到內容。";
             
             aiResultDisplay.textContent = analysisText;
             aiAnalysisResultInput.value = analysisText; // Store result for submission
@@ -421,7 +398,8 @@ document.addEventListener('DOMContentLoaded', function() {
             aiStatus.textContent = '分析完成。';
 
         } catch (error) {
-            aiResultDisplay.textContent = `AI 分析失敗：無法連接伺服器或達到最大重試次數。詳情請查看控制台。`;
+            console.error('AI 分析錯誤:', error);
+            aiResultDisplay.textContent = `AI 分析失敗：${error.message || '無法連接伺服器或 Apps Script 部署錯誤。'}`;
             aiResultDisplay.classList.remove('hidden');
             aiStatus.textContent = '分析失敗。';
             aiAnalysisResultInput.value = 'AI 分析失敗。';
@@ -436,10 +414,10 @@ document.addEventListener('DOMContentLoaded', function() {
     projectSelector.addEventListener('change', handleProjectChange);
     analyzeButton.addEventListener('click', analyzeWithAI);
 
-    // --- Google Sheets Integration Guide ---
+    // --- Google Sheets Submission Logic ---
     function saveToGoogleSheet(data) {
         // STEP 1: 設定您的 Google Apps Script 部署 URL
-        const GAS_URL = 'https://script.google.com/macros/s/AKfycby-ZeMe2zb210FTsyZTJBFL2ZRag7g9YUoi6mYZNm-PJNugm0z016U5ON4emIKuTm7yQA/exec'; 
+        const GAS_URL = 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE'; 
 
         if (GAS_URL.includes('YOUR_GOOGLE_APPS_SCRIPT')) {
             console.error('錯誤：請在 JavaScript 程式碼中設定您的 Google Apps Script URL。資料未提交。');
@@ -451,13 +429,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
         fetch(GAS_URL, {
             method: 'POST',
-            mode: 'no-cors',
+            mode: 'no-cors', // Used for simple cross-origin requests, but actual success check is server-side
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(data),
         })
         .then(response => {
+            // Since mode: 'no-cors' is used, we cannot check response.ok or read response.json() securely.
+            // We rely on the network being up and the Apps Script logging success.
             console.log('評分資料已嘗試提交。請檢查 Google Sheet 確認。');
             submissionMessage.textContent = `項目 ${data.projectId} 評分提交成功！請選擇下一個項目。`;
             submissionMessage.classList.remove('text-red-600');
@@ -520,6 +500,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const finalData = {
+            action: 'submit', // Tell Apps Script this is a data submission request
             evaluator: evaluatorName.value,
             date: evaluationDate.value,
             notes: document.getElementById('evaluation-notes').value,
@@ -545,45 +526,128 @@ document.addEventListener('DOMContentLoaded', function() {
     1. 在您的 Google Sheet (用於儲存評分數據) 中，點選「擴充功能」 -> 「Apps Script」。
     2. 將以下程式碼貼入 Code.gs 檔案中，取代現有內容：
 
+    function getGeminiApiKey() {
+        // 從指令碼屬性中安全讀取 API Key
+        const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+        if (!apiKey) {
+            // 如果 Key 沒有設定，拋出錯誤
+            throw new Error("GEMINI_API_KEY is not set in Script Properties. Please set it in Project Settings.");
+        }
+        return apiKey;
+    }
+
+    // 負責呼叫 Gemini API 並返回分析結果
+    function callGeminiApi(systemPrompt, userQuery) {
+        const API_KEY = getGeminiApiKey();
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY}`;
+
+        const payload = {
+            contents: [{ parts: [{ text: userQuery }] }],
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            config: { temperature: 0.2 }
+        };
+        
+        const options = {
+            method: 'post',
+            contentType: 'application/json',
+            payload: JSON.stringify(payload),
+            muteHttpExceptions: true // 允許處理 API 錯誤響應
+        };
+
+        try {
+            const response = UrlFetchApp.fetch(API_URL, options);
+            const result = JSON.parse(response.getContentText());
+
+            if (response.getResponseCode() !== 200) {
+                // 處理非 200 狀態碼的錯誤，例如 API Key 錯誤、配額不足等
+                const errorBody = result.error?.message || `API 伺服器錯誤 (Status: ${response.getResponseCode()})`;
+                Logger.log(`Gemini API Error: ${errorBody}`);
+                return `AI 分析失敗：${errorBody}`;
+            }
+            
+            // 成功取得結果
+            const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "分析失敗，模型未返回內容。";
+            return text;
+
+        } catch (e) {
+            Logger.log(`Fetch Error: ${e.message}`);
+            return `AI 分析失敗：無法連接 Gemini 服務。錯誤訊息: ${e.message}`;
+        }
+    }
+
     function doGet(e) {
         return HtmlService.createHtmlOutput('POST Request Only');
     }
 
     function doPost(e) {
+        const data = JSON.parse(e.postData.contents);
+        
+        // 1. 處理 AI 分析請求 (action: 'analyze')
+        if (data.action === 'analyze') {
+            const systemPrompt = `
+                你是一位頂級專案管理師 (PMP)，精通專案評估和排序 (Project Prioritization) 的標準。
+                你的任務是根據提供的計畫內容，從商業策略、執行風險和潛在效益的角度，提供一份簡潔、專業的分析建議。
+                你的回覆必須是繁體中文，且只包含分析建議文本，不需要任何前言或結尾語。
+                分析建議應包含以下結構：
+                1. 策略價值 (Strategic Value): 該計畫如何支持組織的頂層目標？
+                2. 執行風險 (Execution Risk): 該計畫在實施過程中可能遇到哪些主要挑戰？
+                3. 優先級考量 (Priority Consideration): 根據價值和風險，提出初步的優先級建議。
+                請使用項目符號 (Markdown List) 呈現分析結果。
+            `;
+            const userQuery = `
+                請分析以下計畫：
+                - 範疇: ${data.projectScope}
+                - 專案名稱: ${data.projectName}
+                - 專案描述: ${data.projectDesc}
+            `;
+            
+            const analysisResult = callGeminiApi(systemPrompt, userQuery);
+            
+            return ContentService.createTextOutput(JSON.stringify({
+                action: 'analyze',
+                analysisText: analysisResult
+            })).setMimeType(ContentService.MimeType.JSON);
+        }
+        
+        // 2. 處理評分數據提交請求 (action: 'submit')
         const sheetName = "原始評分數據";
         let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
         
-        // 確保 Apps Script 的標頭包含新的 AI_Analysis 欄位
         if (!sheet) {
             sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(sheetName);
             sheet.appendRow(["評估日期", "評估者", "總體備註", "範疇", "專案ID", "專案名稱", "價值分數(S_Value)", "風險分數(S_Risk)", "評語", "AI_分析建議"]);
         }
 
-        const data = JSON.parse(e.postData.contents);
-        
-        const rowData = [
-            data.date,
-            data.evaluator,
-            data.notes,
-            data.projectScope,
-            data.projectId,
-            data.projectName,
-            data.S_Value,
-            data.S_Risk,
-            data.Comment,
-            data.AI_Analysis // New column for AI analysis
-        ];
-        
-        sheet.appendRow(rowData);
+        try {
+            const rowData = [
+                data.date,
+                data.evaluator,
+                data.notes,
+                data.projectScope,
+                data.projectId,
+                data.projectName,
+                data.S_Value,
+                data.S_Risk,
+                data.Comment,
+                data.AI_Analysis 
+            ];
+            
+            sheet.appendRow(rowData);
 
-        return ContentService.createTextOutput(JSON.stringify({result: "success", projectId: data.projectId}))
-            .setMimeType(ContentService.MimeType.JSON);
+            return ContentService.createTextOutput(JSON.stringify({result: "success", projectId: data.projectId}))
+                .setMimeType(ContentService.MimeType.JSON);
+                
+        } catch (error) {
+            Logger.log(error);
+            return ContentService.createTextOutput(JSON.stringify({result: "error", message: error.toString()}))
+                .setMimeType(ContentService.MimeType.JSON);
+        }
     }
     
-    3. 點選「部署」 -> 「新增部署」，選擇類型為「網路應用程式」。
-    4. 執行身分選擇「以您自己 (您的電子郵件) 身分執行」，存取權限選擇「任何人」。
-    5. 點選「部署」，並複製產生的「Web 應用程式 URL」。
-    6. 將這個 URL 貼回上方 JavaScript 程式碼中 `const GAS_URL = 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE';` 的位置。
+    4. 點選「部署」 -> 「新增部署」，選擇類型為「網路應用程式」。
+    5. 執行身分選擇「以您自己 (您的電子郵件) 身分執行」，存取權限選擇「任何人」。
+    6. 點選「部署」，並複製產生的「Web 應用程式 URL」。
+    7. 將這個 URL 貼回上方 JavaScript 程式碼中 `const GAS_URL = 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE';` 的位置。
 
     完成上述步驟後，您的評分表單即可將數據提交到 Google Sheet。
 */

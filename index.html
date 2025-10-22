@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>專案評分表單系統 - 健康台灣深耕計畫</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Professional Navy & Clean White with Sky Blue Accents -->
+    <!-- Application Structure Plan: The SPA is redesigned as an interactive, selection-based form (Selector-Driven Evaluation). Users select Scope, then Project. A new AI Analysis section is added below the manual scoring inputs. When the user clicks the AI button, the system sends the selected project details (scope, name, description) to the Gemini API, requesting analysis from a Project Manager persona. The result is displayed dynamically and automatically added to the data payload for submission to Google Sheet. This enhances objective analysis and decision support. -->
+    <!-- Visualization & Content Choices: Content focuses on data input (dropdowns, number inputs, textareas) and dynamic content rendering for AI results. Primary interactive elements include selection dropdowns, scoring inputs, and the new AI analysis button, which triggers the Gemini API call and updates the final submission data. CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f8fafc; /* slate-50 */
+        }
+        .score-input {
+            width: 80px;
+            text-align: center;
+        }
+        .score-box {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <header class="bg-sky-800 text-white shadow-lg">
+        <div class="max-w-6xl mx-auto px-4 py-6">
+            <h1 class="text-2xl font-bold">專案優先級評分表單 (選擇式)</h1>
+            <p class="text-sm text-sky-200">健康台灣深耕計畫第一階段子計畫評估</p>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-12">
+        <div id="form-container" class="space-y-8">
+            <div class="score-box">
+                <h2 class="text-xl font-bold text-slate-700 mb-4 border-b pb-2">評估者資訊</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="evaluator-name" class="block text-sm font-medium text-slate-700">評估者姓名/部門</label>
+                        <input type="text" id="evaluator-name" name="evaluator-name" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 p-2 border">
+                    </div>
+                    <div>
+                        <label for="evaluation-date" class="block text-sm font-medium text-slate-700">評估日期</label>
+                        <input type="date" id="evaluation-date" name="evaluation-date" value="" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 p-2 border">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="evaluation-notes" class="block text-sm font-medium text-slate-700">總體備註 (選填)</label>
+                        <textarea id="evaluation-notes" name="evaluation-notes" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 p-2 border"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="score-box">
+                <h2 class="text-xl font-bold text-slate-700 mb-6 border-b pb-2">評分標準總覽 (1-5分)</h2>
+                <div class="grid grid-cols-5 text-center text-sm font-medium text-sky-700 bg-sky-50 p-2 rounded-lg">
+                    <span>1分 (極低)</span>
+                    <span>2分 (低)</span>
+                    <span>3分 (中等)</span>
+                    <span>4分 (高)</span>
+                    <span>5分 (極高)</span>
+                </div>
+                <p class="text-xs text-slate-500 mt-2">評分基於專案對其所屬範疇的**價值貢獻**（S1-S4）以及**執行困難度**（風險 R）。</p>
+            </div>
+            
+            <form id="scoring-form">
+                <div class="score-box space-y-6">
+                    <h2 class="text-xl font-bold text-slate-700 mb-4 border-b pb-2">選擇評估項目</h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Scope Selector -->
+                        <div>
+                            <label for="scope-selector" class="block text-sm font-medium text-slate-700">選擇計畫範疇</label>
+                            <select id="scope-selector" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 p-2 border">
+                                <option value="" disabled selected>請選擇一個範疇</option>
+                                <!-- Scopes dynamically populated by JS -->
+                            </select>
+                        </div>
+                        
+                        <!-- Project Selector -->
+                        <div>
+                            <label for="project-selector" class="block text-sm font-medium text-slate-700">選擇子計畫</label>
+                            <select id="project-selector" required disabled class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 p-2 border bg-gray-100">
+                                <option value="" disabled selected>請先選擇範疇</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="dynamic-project-details" class="mt-6 space-y-6 hidden">
+                    <!-- Project details, scores, and comment fields will be loaded here -->
+                </div>
+                
+                <div id="ai-analysis-container" class="mt-6 space-y-4 hidden">
+                    <div class="score-box p-4 border border-indigo-300 border-l-4">
+                        <h3 class="text-lg font-bold text-indigo-700 mb-3 flex items-center">
+                            AI 專案管理師分析建議
+                            <span id="ai-status" class="ml-4 text-xs font-normal text-slate-500"></span>
+                        </h3>
+                        <button type="button" id="analyze-button" disabled class="w-full bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg transition duration-150 hover:bg-indigo-600 disabled:bg-gray-400">
+                            點擊以進行專業分析
+                        </button>
+                        <div id="ai-result-display" class="mt-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-slate-700 hidden whitespace-pre-wrap">
+                            <!-- AI analysis content will be displayed here -->
+                        </div>
+                        <!-- Hidden field to store AI result for submission -->
+                        <input type="hidden" id="ai-analysis-result" value="">
+                    </div>
+                </div>
+
+                <!-- Hidden input to track selected project ID for submission -->
+                <input type="hidden" id="selected-project-id" name="selected-project-id">
+
+                <div id="submission-area" class="mt-10 pt-6 border-t border-gray-200">
+                    <div id="submission-message" class="text-center mb-4 hidden text-sm text-red-600 font-medium"></div>
+                    <button type="submit" id="submit-button" disabled class="w-full bg-sky-400 text-white font-bold py-3 px-4 rounded-lg transition duration-150 shadow-md">
+                        請先選擇欲評估的項目
+                    </button>
+                    <p class="text-xs text-center text-slate-500 mt-3">提交後，所有數據將傳輸至指定的 Google Sheet 資料庫進行加權分析。</p>
+                </div>
+            </form>
+        </div>
+    </main>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 根據 DOCX 文件內容更新的 PROJECTS 陣列
+    // 已移除 cost_h 和 risk_r 的預設值/顯示
+    const PROJECTS = [
+        // 範疇一 優化醫療工作條件
+        { id: 'D1-O1-1', scope: '範疇一：優化醫療工作條件', name: '建立「員工價值主張」為核心之健康職場，提升專業成就感與組織認同', desc: '建立「員工價值主張」為核心之健康職場，提升專業成就感與組織認同' },
+        { id: 'D1-O1-2', scope: '範疇一：優化醫療工作條件', name: '建立照護價值導向的人才發展系統，推動分層職涯進階制度與留任獎勵體系', desc: '建立照護價值導向的人才發展系統，推動分層職涯進階制度與留任獎勵體系' },
+        { id: 'D1-O1-3', scope: '範疇一：優化醫療工作條件', name: '以人本照護為核心的彈性工時與排班策略，推動醫療人力韌性與組織效能', desc: '以人本照護為核心的彈性工時與排班策略，推動醫療人力韌性與組織效能' },
+        { id: 'D1-O2-1', scope: '範疇一：優化醫療工作條件', name: '建構智慧醫院資源調度中心，打造全域醫療資源調度與聯防協同平臺', desc: '建構智慧醫院資源調度中心，打造全域醫療資源調度與聯防協同平臺' },
+        { id: 'D1-O2-2', scope: '範疇一：優化醫療工作條件', name: '設計跨專科關鍵資源儀表板與標準化使用分析模組', desc: '設計跨專科關鍵資源儀表板與標準化使用分析模組' },
+        { id: 'D1-O3-1', scope: '範疇一：優化醫療工作條件', name: '推動「一職一助理，全員有AI」，強化同仁智慧支援力', desc: '推動「一職一助理，全員有AI」，強化同仁智慧支援力' },
+        { id: 'D1-O3-2', scope: '範疇一：優化醫療工作條件', name: '導入「化療調配機器手臂」與自動化流程，建立區域中央供應式智慧調劑中心', desc: '導入「化療調配機器手臂」與自動化流程，建立區域中央供應式智慧調劑中心' },
+        { id: 'D1-O3-3', scope: '範疇一：優化醫療工作條件', name: '打造智慧協作照護場域，推動機器人機隊佈署與護理任務整合', desc: '打造智慧協作照護場域，推動機器人機隊佈署與護理任務整合' },
+        { id: 'D1-O4-1', scope: '範疇一：優化醫療工作條件', name: '強化「員工協助方案」與關懷文化，打造醫療職場復原力與支持系統', desc: '強化「員工協助方案」與關懷文化，打造醫療職場復原力與支持系統' },
+        { id: 'D1-O4-2', scope: '範疇一：優化醫療工作條件', name: '結合科技介入與支持機制，促進員工健康續航與工作安適', desc: '結合科技介入與支持機制，促進員工健康續航與工作安適' },
+        { id: 'D1-O5-1', scope: '範疇一：優化醫療工作條件', name: '建構智慧 eICU 系統，打造數據驅動、科技串聯的重症照護新模式，醫學中心的值班重症醫師提供偏鄉加護病房醫師的決策支援', desc: '建構智慧 eICU 系統，打造數據驅動、科技串聯的重症照護新模式，醫學中心的值班重症醫師提供偏鄉加護病房醫師的決策支援' },
+        { id: 'D1-O5-2', scope: '範疇一：優化醫療工作條件', name: '積極推動急症在宅治療、門診靜脈抗生素治療收案數與次專科培訓，拓展急診人才彈性與專業價值', desc: '積極推動急症在宅治療、門診靜脈抗生素治療收案數與次專科培訓，拓展急診人才彈性與專業價值' },
+        
+        // 範疇二 規劃多元人才培訓
+        { id: 'D2-O1-1', scope: '範疇二：規劃多元人才培訓', name: '強化專業：建立專業能力本位的持續教育計畫(CBME/Milestone/EPA/CCC)', desc: '強化專業：建立專業能力本位的持續教育計畫(CBME/Milestone/EPA/CCC)' },
+        { id: 'D2-O1-2', scope: '範疇二：規劃多元人才培訓', name: '數位賦能：建構AI教育體系與輔助決策機制導入，啟動數位能力分級訓練', desc: '數位賦能：建構AI教育體系與輔助決策機制導入，啟動數位能力分級訓練' },
+        { id: 'D2-O1-3', scope: '範疇二：規劃多元人才培訓', name: '人機協作：形塑人機共學新場域，建構智慧賦能之數位教學生態圈', desc: '人機協作：形塑人機共學新場域，建構智慧賦能之數位教學生態圈' },
+        { id: 'D2-O1-4', scope: '範疇二：規劃多元人才培訓', name: '終生學習：推動進修制度與國際合作平台建置，啟動智慧學習資源整合', desc: '終生學習：推動進修制度與國際合作平台建置，啟動智慧學習資源整合' },
+        { id: 'D2-O1-5', scope: '範疇二：規劃多元人才培訓', name: '多元教育：融入人為本的「醫學人文」及「醫品病安」臨床教育課程', desc: '多元教育：融入人為本的「醫學人文」及「醫品病安」臨床教育課程' },
+        { id: 'D2-O2-1', scope: '範疇二：規劃多元人才培訓', name: '跨專業教育：落實跨專業教育(IPE)與團隊合作培訓，建構跨專業整合學習文化', desc: '跨專業教育：落實跨專業教育(IPE)與團隊合作培訓，建構跨專業整合學習文化' },
+        { id: 'D2-O2-2', scope: '範疇二：規劃多元人才培訓', name: '整合課程：建置智能選課系統與跨職類學習模組整合', desc: '整合課程：建置智能選課系統與跨職類學習模組整合' },
+        { id: 'D2-O2-3', scope: '範疇二：規劃多元人才培訓', name: '跨部門協作：推動共學社群建構、跨職類照護試點與人文議題交流平台', desc: '跨部門協作：推動共學社群建構、跨職類照護試點與人文議題交流平台' },
+        { id: 'D2-O2-4', scope: '範疇二：規劃多元人才培訓', name: '成立跨部門數位轉型小組，強化數位管理素養培育，啟動跨部門數位轉型培訓機制', desc: '成立跨部門數位轉型小組，強化數位管理素養培育，啟動跨部門數位轉型培訓機制' },
+        { id: 'D2-O3-1', scope: '範疇二：規劃多元人才培訓', name: '建立急重科合理工時與彈性排班制度，導入專責夜班與區域輪值機制', desc: '建立急重科合理工時與彈性排班制度，導入專責夜班與區域輪值機制' },
+        { id: 'D2-O3-2', scope: '範疇二：規劃多元人才培訓', name: '建立急重難次專科培訓獎勵辦法，提供急重症影像超音波、燒傷重建等進階訓練', desc: '建立急重難次專科培訓獎勵辦法，提供急重症影像超音波、燒傷重建等進階訓練' },
+        { id: 'D2-O3-3', scope: '範疇二：規劃多元人才培訓', name: '建構智慧輔助系統，運用AI預警與遠距支援減輕臨床決策負擔', desc: '建構智慧輔助系統，運用AI預警與遠距支援減輕臨床決策負擔' },
+        { id: 'D2-O3-4', scope: '範疇二：規劃多元人才培訓', name: '推動區域聯防網絡，整合各層級醫院資源分擔照護壓力', desc: '推動區域聯防網絡，整合各層級醫院資源分擔照護壓力' },
+        { id: 'D2-O3-5', scope: '範疇二：規劃多元人才培訓', name: '設立急重難科差異化獎勵制度，提供具競爭力的薪酬與職涯發展路徑', desc: '設立急重難科差異化獎勵制度，提供具競爭力的薪酬與職涯發展路徑' },
+        { id: 'D2-O4-1', scope: '範疇二：規劃多元人才培訓', name: '照護創新的引路者，護理師專業續航與回流支持', desc: '照護創新的引路者，護理師專業續航與回流支持' },
+        { id: 'D2-O4-2', scope: '範疇二：規劃多元人才培訓', name: '智能職涯規劃：導入智慧化職涯導覽平台，整合數位檔案與個人學習歷程管理策略', desc: '智能職涯規劃：導入智慧化職涯導覽平台，整合數位檔案與個人學習歷程管理策略' },
+        { id: 'D2-O4-3', scope: '範疇二：規劃多元人才培訓', name: '人才循環系統：建立次世代人才循環管理制度，推動跨職能輪調與雙軌職涯', desc: '人才循環系統：建立次世代人才循環管理制度，推動跨職能輪調與雙軌職涯' },
+        { id: 'D2-O4-4', scope: '範疇二：規劃多元人才培訓', name: '動態能力評估：導入即時動態能力分析，發展每季即時能力分析與追蹤策略', desc: '動態能力評估：導入即時動態能力分析，發展每季即時能力分析與追蹤策略' },
+        { id: 'D2-O4-5', scope: '範疇二：規劃多元人才培訓', name: '智慧輔導：導入AI導師輔導機制，發展智慧教練支持與回饋培力策略', desc: '智慧輔導：導入AI導師輔導機制，發展智慧教練支持與回饋培力策略' },
+        { id: 'D2-O4-6', scope: '範疇二：規劃多元人才培訓', name: '參與式職涯設計：推動職涯設計工作坊與互助計畫，員工共參職涯發展路徑', desc: '參與式職涯設計：推動職涯設計工作坊與互助計畫，員工共參職涯發展路徑' },
+        { id: 'D2-O5-1', scope: '範疇二：規劃多元人才培訓', name: '建立跨領域社區整合照護團隊，成為生活型態醫學之跨職類實務訓練基地', desc: '建立跨領域社區整合照護團隊，成為生活型態醫學之跨職類實務訓練基地' },
+        { id: 'D2-O5-2', scope: '範疇二：規劃多元人才培訓', name: '共訓共照達三高控制三目標，發展「慢性病跨專業整合照護臨床訓用」架構', desc: '共訓共照達三高控制三目標，發展「慢性病跨專業整合照護臨床訓用」架步' },
+        { id: 'D2-O5-3', scope: '範疇二：規劃多元人才培訓', name: '以人為本的Hospitalist訓練革新，建構虛實整合場域下的專業關鍵能力框架', desc: '以人為本的Hospitalist訓練革新，建構虛實整合場域下的專業關鍵能力框架' },
+
+        // 範疇三 導入智慧科技醫療
+        { id: 'D3-O1-1', scope: '範疇三：導入智慧科技醫療', name: 'AI治理強化: 強化負責任的AI中心角色，持續推動醫療AI應用之當責與安全性', desc: 'AI治理強化: 強化負責任的AI中心角色，持續推動醫療AI應用之當責與安全性' },
+        { id: 'D3-O1-2', scope: '範疇三：導入智慧科技醫療', name: '影像診斷賦能: 部署骨折骨齡AI輔助診斷系統，支援第一線立即診斷醫療作業', desc: '影像診斷賦能: 部署骨折骨齡AI輔助診斷系統，支援第一線立即診斷醫療作業' },
+        { id: 'D3-O1-3', scope: '範疇三：導入智慧科技醫療', name: '導入智能客服與12導程心電圖於居家照護，強化在地即時健康監測與遠距診斷支援', desc: '導入智能客服與12導程心電圖於居家照護，強化在地即時健康監測與遠距診斷支援' },
+        { id: 'D3-O1-4', scope: '範疇三：導入智慧科技醫療', name: '導入AI輔助數位病理診斷，佈署病理玻片掃描、管理平台，輔助精確診斷決策', desc: '導入AI輔助數位病理診斷，佈署病理玻片掃描、管理平台，輔助精確診斷決策' },
+        { id: 'D3-O1-5', scope: '範疇三：導入智慧科技醫療', name: '串聯穿戴裝置與AI風險分級，建立CKM數位護照，實現精準智慧健康價值鏈', desc: '串聯穿戴裝置與AI風險分級，建立CKM數位護照，實現精準智慧健康價值鏈' },
+        { id: 'D3-O1-6', scope: '範疇三：導入智慧科技醫療', name: '建構FHIR互通核心體系，佈署FHIR Server交換平台及FHIR格式轉換引擎', desc: '建構FHIR互通核心體系，佈署FHIR Server交換平台及FHIR格式轉換引擎' },
+        { id: 'D3-O2-1', scope: '範疇三：導入智慧科技醫療', name: '升級次世代定序能力，推動多癌別家族風險管理與可測量殘存癌細胞(MRD)監測', desc: '升級次世代定序能力，推動多癌別家族風險管理與可測量殘存癌細胞(MRD)監測' },
+        { id: 'D3-O2-2', scope: '範疇三：導入智慧科技醫療', name: '建置以Targeted NGS核心精準感染診斷與智慧監測系統，提升不明感染鑑別能力', desc: '建置以Targeted NGS核心精準感染診斷與智慧監測系統，提升不明感染鑑別能力' },
+        { id: 'D3-O2-3', scope: '範疇三：導入智慧科技醫療', name: '發展智慧手術排班系統與智慧供應鏈管理，提升手術效率與器械管理', desc: '發展智慧手術排班系統與智慧供應鏈管理，提升手術效率與器械管理' },
+        { id: 'D3-O2-4', scope: '範疇三：導入智慧科技醫療', name: '建立與本地企業及學研團隊的合作框架，共同開發具國際競爭力的健康產業產品', desc: '建立與本地企業及學研團隊的合作框架，共同開發具國際競爭力的健康產業產品' },
+        { id: 'D3-O2-5', scope: '範疇三：導入智慧科技醫療', name: '建立與沙崙南科AI國網中心、機器人園區之合作溝通機制', desc: '建立與沙崙南科AI國網中心、機器人園區之合作溝通機制' },
+        { id: 'D3-O2-6', scope: '範疇三：導入智慧科技醫療', name: '推動與奇美衍生新創之初步合作專案，加速創新技術落地', desc: '推動與奇美衍生新創之初步合作專案，加速創新技術落地' },
+        { id: 'D3-O3-1', scope: '範疇三：導入智慧科技醫療', name: '建置智慧腫瘤決策平台，整合FHIR與NGS報告，實現癌症照護數位轉型', desc: '建置智慧腫瘤決策平台，整合FHIR與NGS報告，實現癌症照護數位轉型' },
+        { id: 'D3-O3-2', scope: '範疇三：導入智慧科技醫療', name: '發展結合AI預警與病人自我管理的慢性病管理系統，提升照護品質', desc: '發展結合AI預警與病人自我管理的慢性病管理系統，提升照護品質' },
+        { id: 'D3-O3-3', scope: '範疇三：導入智慧科技醫療', name: '推動遠距會診與討論機制，提升偏鄉癌症病人診療可近性與一致性', desc: '推動遠距會診與討論機制，提升偏鄉癌症病人診療可近性與一致性' },
+        { id: 'D3-O4-1', scope: '範疇三：導入智慧科技醫療', name: '強化AI資安管理盤點，完成國際標準差距分析與新法遵循策略', desc: '強化AI資安管理盤點，完成國際標準差距分析與新法遵循策略' },
+        { id: 'D3-O4-2', scope: '範疇三：導入智慧科技醫療', name: '奠定醫院資安管理基礎，完成全院資安現況盤點與ISO/HIMSS差距分析', desc: '奠定醫院資安管理基礎，完成全院資安現況盤點與ISO/HIMSS差距分析' },
+        { id: 'D3-O4-3', scope: '範疇三：導入智慧科技醫療', name: '建立醫療數據去識別化共享基礎，完成雲端平台與去個資模組開發', desc: '建立醫療數據去識別化共享基礎，完成雲端平台與去個資模組開發' },
+        { id: 'D3-O4-4', scope: '範疇三：導入智慧科技醫療', name: '參與衛福部次世代數位醫療平臺，推動TWCDI標準應用與真實世界資料庫建置', desc: '參與衛福部次世代數位醫療平臺，推動TWCDI標準應用與真實世界資料庫建置' },
+        { id: 'D3-O5-1', scope: '範疇三：導入智慧科技醫療', name: '以HIMSS AI Smart Hospital為藍圖，打造國際級學習型智慧醫院', desc: '以HIMSS AI Smart Hospital為藍圖，打造國際級學習型智慧醫院' },
+        { id: 'D3-O5-2', scope: '範疇三：導入智慧科技醫療', name: '導入智慧床頭顯示卡、電子白板與穿戴式監測裝置，強化生理數據即時監測警示', desc: '導入智慧床頭顯示卡、電子白板與穿戴式監測裝置，強化生理數據即時監測警示' },
+        { id: 'D3-O5-3', scope: '範疇三：導入智慧科技醫療', name: '擴大AI預測模型於臨床高風險場域應用，優化臨床決策與照護應變效率', desc: '擴大AI預測模型於臨床高風險場域應用，優化臨床決策與照護應變效率' },
+        { id: 'D3-O5-4', scope: '範疇三：導入智慧科技醫療', name: '規劃導入多功能機器人，優化院內物流與輔助照護流程', desc: '規劃導入多功能機器人，優化院內物流與輔助照護流程' },
+        { id: 'D3-O5-5', scope: '範疇三：導入智慧科技醫療', name: '啟動全場域病安品質AI實時監測系統，即時預警與改善照護風險', desc: '啟動全場域病安品質AI實時監測系統，即時預警與改善照護風險' },
+        { id: 'D3-O6-1', scope: '範疇三：導入智慧科技醫療', name: '建置電子化病人回報結果測量系統(ePROM)，強化病人參與與連續照護品質', desc: '建置電子化病人回報結果測量系統(ePROM)，強化病人參與與連續照護品質' },
+        { id: 'D3-O6-2', scope: '範疇三：導入智慧科技醫療', name: '啟動雲地混合多模態AI應用，提升數據處理效率與分析能力', desc: '啟動雲地混合多模態AI應用，提升數據處理效率與分析能力' },
+        { id: 'D3-O6-3', scope: '範疇三：導入智慧科技醫療', name: '導入醫療小語言模型邊緣運算，強化在地化即時診斷與決策支援', desc: '導入醫療小語言模型邊緣運算，強化在地化即時診斷與決策支援' },
+        { id: 'D3-O6-4', scope: '範疇三：導入智慧科技醫療', name: '導入區塊鏈技術儲存醫療資訊，強化數據安全與不可篡改性', desc: '導入區塊鏈技術儲存醫療資訊，強化數據安全與不可篡改性' },
+        { id: 'D3-O6-5', scope: '範疇三：導入智慧科技醫療', name: '開發智慧醫療AI教學模組，提升醫事人員AI應用能力', desc: '開發智慧醫療AI教學模組，提升醫事人員AI應用能力' },
+        { id: 'D3-O6-6', scope: '範疇三：導入智慧科技醫療', name: '導入醫療多工AI Agent，從串接臨床資加，加快臨床工作效率', desc: '導入醫療多工AI Agent，從串接臨床資加，加快臨床工作效率' },
+        { id: 'D3-O6-7', scope: '範疇三：導入智慧科技醫療', name: '採用經臨床AI取證驗證中心認證之成熟產品，並透過SMART on FHIR整合應用', desc: '採用經臨床AI取證驗證中心認證之成熟產品，並透過SMART on FHIR整合應用' },
+
+        // 範疇四 社會責任醫療永續
+        { id: 'D4-O1-1', scope: '範疇四：社會責任醫療永續', name: '熱區導向雙軌篩檢：鎖定高風險里別，整合CKM與大腸癌篩檢行動', desc: '熱區導向雙軌篩檢：鎖定高風險里別，整合CKM與大腸癌篩檢行動' },
+        { id: 'D4-O1-2', scope: '範疇四：社會責任醫療永續', name: '智慧預警體系：建置AI風險辨識系統，強化早期介入能力', desc: '智慧預警體系：建置AI風險辨識系統，強化早期介入能力' },
+        { id: 'D4-O1-3', scope: '範疇四：社會責任醫療永續', name: '開發遠距監測平台與復健APP，強化慢病自我管理(如: COPD肺復健模組)', desc: '開發遠距監測平台與復健APP，強化慢病自我管理(如: COPD肺復健模組)' },
+        { id: 'D4-O2-1', scope: '範疇四：社會責任醫療永續', name: '偏鄉整合照護：建構大內、將軍雙軸轉銜體系，強化專科巡迴與在地培訓', desc: '偏鄉整合照護：建構大內、將軍雙軸轉銜體系，強化專科巡迴與在地培訓' },
+        { id: 'D4-O2-2', scope: '範疇四：社會責任醫療永續', name: '原鄉健康共學：南迴地區家庭式健康促進，融入傳統文化的糖尿病防治模式', desc: '原鄉健康共學：南迴地區家庭式健康促進，融入傳統文化的糖尿病防治模式' },
+        { id: 'D4-O3-1', scope: '範疇四：社會責任醫療永續', name: '在地專家共識：制定臺灣生活型態醫學臨床指引，建立本土化照護標準', desc: '在地專家共識：制定臺灣生活型態醫學臨床指引，建立本土化照護標準' },
+        { id: 'D4-O3-2', scope: '範疇四：社會責任醫療永續', name: '啟動慢病逆轉計畫，建立罕病生活型態照護典範(例如：龐貝氏症)', desc: '啟動慢病逆轉計畫，建立罕病生活型態照護典範(例如：龐貝氏症)' },
+        { id: 'D4-O4-1', scope: '範疇四：社會責任醫療永續', name: '導入溫室氣體盤查查驗機制，參加ISO 14064-1盤查驗證', desc: '導入溫室氣體盤查查驗機制，參加ISO 14064-1盤查驗證' },
+        { id: 'D4-O4-2', scope: '範疇四：社會責任醫療永續', name: '導入AI能源管理系統，針對手術室、空調等高耗能設備優化控制', desc: '導入AI能源管理系統，針對手術室、空調等高耗能設備優化控制' },
+        { id: 'D4-O4-3', scope: '範疇四：社會責任醫療永續', name: '建立醫療廢棄物智慧監控系統，推動源頭減量與分類回收', desc: '建立醫療廢棄物智慧監控系統，推動源頭減量與分類回收' },
+        { id: 'D4-O4-4', scope: '範疇四：社會責任醫療永續', name: '全員綠行動：培育綠領種子人員，建立永續管理專業團隊', desc: '全員綠行動：培育綠領種子人員，建立永續管理專業團隊' },
+        { id: 'D4-O4-5', scope: '範疇四：社會責任醫療永續', name: '推動10大綠生活守則，全員參與節能減碳行動', desc: '推動10大綠生活守則，全員參與節能減碳行動' },
+        { id: 'D4-O4-6', scope: '範疇四：社會責任醫療永續', name: '綠色洗腎，盤點血液透析水電用量並完成首家洗腎室「環境足跡稽核」', desc: '綠色洗腎，盤點血液透析水電用量並完成首家洗腎室「環境足跡稽核」' },
+        { id: 'D4-O5-1', scope: '範疇四：社會責任醫療永續', name: '治理架構成型：永續委員會定期運作，建置 ESG 指標與治理資訊平台', desc: '治理架構成型：永續委員會定期運作，建置 ESG 指標與治理資訊平台' },
+        { id: 'D4-O5-2', scope: '範疇四：社會責任醫療永續', name: '組織盤查驗證：啟動 ISO 14064-1 組織層級盤查，送第三方驗證', desc: '組織盤查驗證：啟動 ISO 14064-1 組織層級盤查，送第三方驗證' },
+        { id: 'D4-O5-3', scope: '範疇四：社會責任醫療永續', name: '永續報告草案：依 GRI 準則彙整資料，完成永續報告初稿 15 %', desc: '永續報告草案：依 GRI 準則彙整資料，完成永續報告初稿 15 %' },
+        { id: 'D4-O5-4', scope: '範疇四：社會責任醫療永續', name: 'SROI 研究設計：借鏡他院經驗，完成 1 件醫療專案 SROI 架構', desc: 'SROI 研究設計：借鏡他院經驗，完成 1 件醫療專案 SROI 架構' },
+        { id: 'D4-O6-1', scope: '範疇四：社會責任醫療永續', name: '規劃居家化 PAC「生活情境區」，強化病人返家信心並縮短出院準備時間', desc: '規劃居家化 PAC「生活情境區」，強化病人返家信心並縮短出院準備時間' },
+        { id: 'D4-O6-2', scope: '範疇四：社會責任醫療永續', name: '組建居家洗腎團隊與完善設備布建，達成首批病人安全試辦並驗證可行', desc: '組建居家洗腎團隊與完善設備布建，達成首批病人安全試辦並驗證可行' },
+        { id: 'D4-O6-3', scope: '範疇四：社會責任醫療永續', name: '建置智慧心理健康服務基礎架構，完成跨領域小組建置與專業人才培訓', desc: '建置智慧心理健康服務基礎架構，完成跨領域小組建置與專業人才培訓' },
+        { id: 'D4-O6-4', scope: '範疇四：社會責任醫療永續', name: '啟動慈悲社區試行計畫，建立在地陪伴與共照網絡雛型', desc: '啟動慈悲社區試行計畫，建立在地陪伴與共照網絡雛型' }
+    ];
+
+    const SCOPE_INFO = [
+        { name: '範疇一：優化醫療工作條件', color: 'bg-sky-100', text: 'text-sky-700', border: 'border-sky-500' },
+        { name: '範疇二：規劃多元人才培訓', color: 'bg-teal-100', text: 'text-teal-700', border: 'border-teal-500' },
+        { name: '範疇三：導入智慧科技醫療', color: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-500' },
+        { name: '範疇四：社會責任醫療永續', color: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-500' }
+    ];
+
+    const form = document.getElementById('scoring-form');
+    const scopeSelector = document.getElementById('scope-selector');
+    const projectSelector = document.getElementById('project-selector');
+    const dynamicDetails = document.getElementById('dynamic-project-details');
+    const selectedProjectIdInput = document.getElementById('selected-project-id');
+    const evaluatorName = document.getElementById('evaluator-name');
+    const evaluationDate = document.getElementById('evaluation-date');
+    const submissionMessage = document.getElementById('submission-message');
+    const submitButton = document.getElementById('submit-button');
+    const analyzeButton = document.getElementById('analyze-button');
+    const aiResultDisplay = document.getElementById('ai-result-display');
+    const aiAnalysisResultInput = document.getElementById('ai-analysis-result');
+    const aiAnalysisContainer = document.getElementById('ai-analysis-container');
+    const aiStatus = document.getElementById('ai-status');
+
+    // Set today's date for convenience
+    evaluationDate.valueAsDate = new Date();
+
+    function renderScopeSelector() {
+        const scopes = SCOPE_INFO.map(s => s.name);
+        scopes.forEach(scope => {
+            const option = document.createElement('option');
+            option.value = scope;
+            option.textContent = scope;
+            scopeSelector.appendChild(option);
+        });
+    }
+
+    function handleScopeChange() {
+        const selectedScope = scopeSelector.value;
+        const filteredProjects = PROJECTS.filter(p => p.scope === selectedScope);
+        
+        // Reset project selector
+        projectSelector.innerHTML = '<option value="" disabled selected>請選擇欲評估的子計畫</option>';
+        projectSelector.disabled = false;
+        projectSelector.classList.remove('bg-gray-100');
+        dynamicDetails.classList.add('hidden');
+        aiAnalysisContainer.classList.add('hidden');
+        submitButton.disabled = true;
+        submitButton.textContent = '請先選擇欲評估的項目';
+        submitButton.classList.remove('bg-sky-600', 'hover:bg-sky-700');
+        submitButton.classList.add('bg-sky-400');
+        
+        filteredProjects.forEach(project => {
+            const option = document.createElement('option');
+            option.value = project.id;
+            option.textContent = `${project.id} - ${project.name}`;
+            projectSelector.appendChild(option);
+        });
+    }
+
+    function handleProjectChange() {
+        const selectedId = projectSelector.value;
+        const project = PROJECTS.find(p => p.id === selectedId);
+        
+        aiAnalysisResultInput.value = ''; // Clear previous AI result
+        aiResultDisplay.textContent = '';
+        aiResultDisplay.classList.add('hidden');
+        aiStatus.textContent = '';
+
+        if (!project) {
+            dynamicDetails.classList.add('hidden');
+            aiAnalysisContainer.classList.add('hidden');
+            analyzeButton.disabled = true;
+            return;
+        }
+
+        const scopeInfo = SCOPE_INFO.find(s => project.scope.includes(s.name));
+        
+        selectedProjectIdInput.value = project.id;
+        dynamicDetails.classList.remove('hidden');
+        aiAnalysisContainer.classList.remove('hidden');
+        analyzeButton.disabled = false;
+        submitButton.disabled = false;
+        submitButton.textContent = '提交評分並儲存至 Google Sheet';
+        submitButton.classList.remove('bg-sky-400');
+        submitButton.classList.add('bg-sky-600', 'hover:bg-sky-700');
+        
+        // --- Dynamic Form Rendering ---
+        dynamicDetails.innerHTML = `
+            <div class="score-box p-4 border ${scopeInfo.border} border-l-4">
+                <h4 class="text-lg font-bold ${scopeInfo.text} mb-2">${project.name}</h4>
+                <p class="text-sm text-slate-600 mb-4">${project.desc}</p>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 items-end">
+                    <div class="text-sm text-slate-600">
+                        <label for="score-${project.id}" class="block font-medium">1. 價值分數 (1-5)</label>
+                        <p class="text-xs text-slate-400 mb-1">對組織策略目標的貢獻度</p>
+                        <input type="number" id="score-${project.id}" name="score-${project.id}" data-project-id="${project.id}" min="1" max="5" required class="score-input rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 p-2 border">
+                    </div>
+                    <div class="text-sm text-slate-600">
+                        <label for="risk_score-${project.id}" class="block font-medium">2. 風險/複雜度分數 (1-5)</label>
+                        <p class="text-xs text-slate-400 mb-1">執行困難度 (1=低複雜，5=高複雜)</p>
+                        <input type="number" id="risk_score-${project.id}" name="risk_score-${project.id}" data-project-id="${project.id}" min="1" max="5" required class="score-input rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 p-2 border">
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <label for="comment-${project.id}" class="block text-sm font-medium text-slate-700">3. 評語與建議 (選填)</label>
+                    <textarea id="comment-${project.id}" name="comment-${project.id}" rows="2" placeholder="請輸入對此專案的具體建議" class="mt-1 block w-full text-xs rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 p-2 border"></textarea>
+                </div>
+            </div>
+        `;
+    }
+
+    // --- Gemini API Integration ---
+    const API_KEY = ""; // Using empty string for Canvas environment
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY}`;
+    const MAX_RETRIES = 3;
+    const BASE_DELAY = 1000;
+
+    async function callGeminiApi(payload) {
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "分析失敗，模型未返回內容。";
+                return text;
+
+            } catch (error) {
+                if (attempt < MAX_RETRIES - 1) {
+                    const delay = BASE_DELAY * (2 ** attempt);
+                    // Exponential backoff logic
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    throw error;
+                }
+            }
+        }
+    }
+
+    async function analyzeWithAI() {
+        const projectId = projectSelector.value;
+        const project = PROJECTS.find(p => p.id === projectId);
+        
+        if (!project) return;
+
+        analyzeButton.disabled = true;
+        analyzeButton.textContent = '分析中，請稍候...';
+        aiResultDisplay.classList.add('hidden');
+        aiStatus.textContent = '正在呼叫 AI 進行分析...';
+
+        const systemPrompt = `
+            你是一位頂級專案管理師 (PMP)，精通專案評估和排序 (Project Prioritization) 的標準。
+            你的任務是根據提供的計畫內容，從商業策略、執行風險和潛在效益的角度，提供一份簡潔、專業的分析建議。
+            你的回覆必須是繁體中文，且只包含分析建議文本，不需要任何前言或結尾語。
+            分析建議應包含以下結構：
+            1. 策略價值 (Strategic Value): 該計畫如何支持組織的頂層目標？
+            2. 執行風險 (Execution Risk): 該計畫在實施過程中可能遇到哪些主要挑戰？
+            3. 優先級考量 (Priority Consideration): 根據價值和風險，提出初步的優先級建議。
+            請使用項目符號 (Markdown List) 呈現分析結果。
+        `;
+
+        const userQuery = `
+            請分析以下計畫：
+            - 範疇: ${project.scope}
+            - 專案名稱: ${project.name}
+            - 專案描述: ${project.desc}
+        `;
+
+        const payload = {
+            contents: [{ parts: [{ text: userQuery }] }],
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            config: { temperature: 0.2 }
+        };
+
+        try {
+            const analysisText = await callGeminiApi(payload);
+            
+            aiResultDisplay.textContent = analysisText;
+            aiAnalysisResultInput.value = analysisText; // Store result for submission
+            aiResultDisplay.classList.remove('hidden');
+            aiStatus.textContent = '分析完成。';
+
+        } catch (error) {
+            aiResultDisplay.textContent = `AI 分析失敗：無法連接伺服器或達到最大重試次數。詳情請查看控制台。`;
+            aiResultDisplay.classList.remove('hidden');
+            aiStatus.textContent = '分析失敗。';
+            aiAnalysisResultInput.value = 'AI 分析失敗。';
+        } finally {
+            analyzeButton.disabled = false;
+            analyzeButton.textContent = '重新進行專業分析';
+        }
+    }
+
+    // --- Event Listeners ---
+    scopeSelector.addEventListener('change', handleScopeChange);
+    projectSelector.addEventListener('change', handleProjectChange);
+    analyzeButton.addEventListener('click', analyzeWithAI);
+
+    // --- Google Sheets Integration Guide ---
+    function saveToGoogleSheet(data) {
+        // STEP 1: 設定您的 Google Apps Script 部署 URL
+        const GAS_URL = 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE'; 
+
+        if (GAS_URL.includes('YOUR_GOOGLE_APPS_SCRIPT')) {
+            console.error('錯誤：請在 JavaScript 程式碼中設定您的 Google Apps Script URL。資料未提交。');
+            submissionMessage.textContent = '錯誤：請設定 Google Sheets 部署 URL 以啟用儲存功能。';
+            submissionMessage.classList.remove('hidden');
+            submissionMessage.classList.add('text-red-600');
+            return;
+        }
+
+        fetch(GAS_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+        })
+        .then(response => {
+            console.log('評分資料已嘗試提交。請檢查 Google Sheet 確認。');
+            submissionMessage.textContent = `項目 ${data.projectId} 評分提交成功！請選擇下一個項目。`;
+            submissionMessage.classList.remove('text-red-600');
+            submissionMessage.classList.add('text-green-600');
+            
+            // Clear current selection and reset form state for next submission
+            projectSelector.value = "";
+            dynamicDetails.classList.add('hidden');
+            aiAnalysisContainer.classList.add('hidden');
+            submitButton.disabled = true;
+            submitButton.textContent = '請先選擇欲評估的項目';
+            submitButton.classList.remove('bg-sky-600', 'hover:bg-sky-700');
+            submitButton.classList.add('bg-sky-400');
+            aiAnalysisResultInput.value = '';
+            aiResultDisplay.textContent = '';
+            aiResultDisplay.classList.add('hidden');
+            aiStatus.textContent = '';
+
+        })
+        .catch(error => {
+            console.error('提交錯誤:', error);
+            submissionMessage.textContent = '提交失敗：網路或伺服器連線錯誤。';
+            submissionMessage.classList.remove('hidden');
+            submissionMessage.classList.add('text-red-600');
+        });
+    }
+
+    // --- Form Submission Logic ---
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const projectId = selectedProjectIdInput.value;
+        const valueInput = document.getElementById(`score-${projectId}`);
+        const riskInput = document.getElementById(`risk_score-${projectId}`);
+        const commentText = document.getElementById(`comment-${projectId}`).value;
+        const project = PROJECTS.find(p => p.id === projectId);
+
+        if (!evaluatorName.value || !evaluationDate.value) {
+            submissionMessage.textContent = '請填寫評估者姓名與日期。';
+            submissionMessage.classList.remove('hidden');
+            submissionMessage.classList.add('text-red-600');
+            return;
+        }
+
+        if (!projectId || !valueInput || !riskInput) {
+            submissionMessage.textContent = '請選擇項目並填寫所有評分欄位。';
+            submissionMessage.classList.remove('hidden');
+            submissionMessage.classList.add('text-red-600');
+            return;
+        }
+        
+        const value = parseInt(valueInput.value);
+        const risk = parseInt(riskInput.value);
+
+        if (value < 1 || value > 5 || risk < 1 || risk > 5) {
+            submissionMessage.textContent = '價值分數和風險分數必須在 1 到 5 之間。';
+            submissionMessage.classList.remove('hidden');
+            submissionMessage.classList.add('text-red-600');
+            return;
+        }
+
+        const finalData = {
+            evaluator: evaluatorName.value,
+            date: evaluationDate.value,
+            notes: document.getElementById('evaluation-notes').value,
+            projectId: projectId,
+            projectName: project.name,
+            projectScope: project.scope,
+            S_Value: value,
+            S_Risk: risk,
+            Comment: commentText,
+            AI_Analysis: aiAnalysisResultInput.value // Include AI analysis result
+        };
+
+        submissionMessage.classList.add('hidden');
+        saveToGoogleSheet(finalData);
+    });
+
+    renderScopeSelector();
+});
+
+/*
+    Google Apps Script (GAS) 部署指引 (用於連線 Google Sheet)
+    
+    1. 在您的 Google Sheet (用於儲存評分數據) 中，點選「擴充功能」 -> 「Apps Script」。
+    2. 將以下程式碼貼入 Code.gs 檔案中，取代現有內容：
+
+    function doGet(e) {
+        return HtmlService.createHtmlOutput('POST Request Only');
+    }
+
+    function doPost(e) {
+        const sheetName = "原始評分數據";
+        let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+        
+        // 確保 Apps Script 的標頭包含新的 AI_Analysis 欄位
+        if (!sheet) {
+            sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(sheetName);
+            sheet.appendRow(["評估日期", "評估者", "總體備註", "範疇", "專案ID", "專案名稱", "價值分數(S_Value)", "風險分數(S_Risk)", "評語", "AI_分析建議"]);
+        }
+
+        const data = JSON.parse(e.postData.contents);
+        
+        const rowData = [
+            data.date,
+            data.evaluator,
+            data.notes,
+            data.projectScope,
+            data.projectId,
+            data.projectName,
+            data.S_Value,
+            data.S_Risk,
+            data.Comment,
+            data.AI_Analysis // New column for AI analysis
+        ];
+        
+        sheet.appendRow(rowData);
+
+        return ContentService.createTextOutput(JSON.stringify({result: "success", projectId: data.projectId}))
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    3. 點選「部署」 -> 「新增部署」，選擇類型為「網路應用程式」。
+    4. 執行身分選擇「以您自己 (您的電子郵件) 身分執行」，存取權限選擇「任何人」。
+    5. 點選「部署」，並複製產生的「Web 應用程式 URL」。
+    6. 將這個 URL 貼回上方 JavaScript 程式碼中 `const GAS_URL = 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE';` 的位置。
+
+    完成上述步驟後，您的評分表單即可將數據提交到 Google Sheet。
+*/
+</script>
+
+</body>
+</html>

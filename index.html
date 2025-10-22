@@ -353,7 +353,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const project = PROJECTS.find(p => p.id === projectId);
 
         // Check if GAS_URL is set for submission or analysis
-        const GAS_URL = 'https://script.google.com/macros/s/AKfycbxmirp-dmgGgofVXafCOOFnRWz_fyFPkp7h2m17WjdZcgnueITNxZPyaAaApl4o4NVO8A/exec';
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzVSibvEdF6aRICqLF5mqxk3k6DweQzT5uTv3b0LOdCnYKi599CEwrYb8P0E3azv4Lj1Q/exec';
         if (GAS_URL.includes('YOUR_GOOGLE_APPS_SCRIPT')) {
             aiStatus.textContent = '錯誤：請設定 Google Apps Script URL。';
             return;
@@ -417,7 +417,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- Google Sheets Submission Logic ---
     function saveToGoogleSheet(data) {
         // STEP 1: 設定您的 Google Apps Script 部署 URL
-        const GAS_URL = 'https://script.google.com/macros/s/AKfycbxmirp-dmgGgofVXafCOOFnRWz_fyFPkp7h2m17WjdZcgnueITNxZPyaAaApl4o4NVO8A/exec'; 
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzVSibvEdF6aRICqLF5mqxk3k6DweQzT5uTv3b0LOdCnYKi599CEwrYb8P0E3azv4Lj1Q/exec'; 
 
         if (GAS_URL.includes('YOUR_GOOGLE_APPS_SCRIPT')) {
             console.error('錯誤：請在 JavaScript 程式碼中設定您的 Google Apps Script URL。資料未提交。');
